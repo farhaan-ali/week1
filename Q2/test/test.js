@@ -1,6 +1,6 @@
 const { expect, assert } = require("chai");
 const { ethers } = require("hardhat");
-const { groth16 } = require("snarkjs");
+const { groth16 , plonk} = require("snarkjs");
 
 const wasm_tester = require("circom_tester").wasm;
 
@@ -42,11 +42,11 @@ describe("HelloWorld", function () {
         const { proof, publicSignals } = await groth16.fullProve({"a":"2","b":"3"}, "contracts/circuits/HelloWorld/HelloWorld_js/HelloWorld.wasm","contracts/circuits/HelloWorld/circuit_final.zkey");
 
         console.log('2x3 =',publicSignals[0]);
-        
+
         const calldata = await groth16.exportSolidityCallData(proof, publicSignals);
-    
+
         const argv = calldata.replace(/["[\]\s]/g, "").split(',').map(x => BigInt(x).toString());
-    
+
         const a = [argv[0], argv[1]];
         const b = [[argv[2], argv[3]], [argv[4], argv[5]]];
         const c = [argv[6], argv[7]];
@@ -65,36 +65,96 @@ describe("HelloWorld", function () {
 
 
 describe("Multiplier3 with Groth16", function () {
+    let Verifier;
+    let verifier;
 
     beforeEach(async function () {
-        //[assignment] insert your script here
-    });
-
-    it("Circuit should multiply three numbers correctly", async function () {
-        //[assignment] insert your script here
+      //[assignment] insert your script here
+      Verifier = await ethers.getContractFactory("Multiplier3Verifier");
+      verifier = await Verifier.deploy();
+      await verifier.deployed();
     });
 
     it("Should return true for correct proof", async function () {
-        //[assignment] insert your script here
-    });
+      //[assignment] insert your script here
+      //[assignment] Add comments to explain what each line is doing
+      // generates proof based on private inputs a and b, the witness which describes the computation and the verification key
+      const { proof, publicSignals } = await groth16.fullProve(
+        { a: "1", b: "2", c: "3" },
+        "contracts/circuits/Multiplier3/Multiplier3_js/Multiplier3.wasm",
+        "contracts/circuits/Multiplier3/circuit_final.zkey"
+      );
 
+      // log out public signals of the circuit which is the output c = a*b
+      console.log("1x2x3 =", publicSignals[0]);
+
+      // generate calldata for solididty contract call on HelloWorldVerifier.sol
+      const calldata = await groth16.exportSolidityCallData(
+        proof,
+        publicSignals
+      );
+
+      const argv = calldata
+        .replace(/["[\]\s]/g, "")
+        .split(",")
+        .map((x) => BigInt(x).toString());
+
+
+      // a, b and c are assigned their respective values from the calldata.
+      // Input is assigned the public signal
+      const a = [argv[0], argv[1]];
+      const b = [
+        [argv[2], argv[3]],
+        [argv[4], argv[5]],
+      ];
+      const c = [argv[6], argv[7]];
+      const Input = argv.slice(8);
+
+      // calls the verifier contract
+      expect(await verifier.verifyProof(a, b, c, Input)).to.be.true;
+    });
     it("Should return false for invalid proof", async function () {
-        //[assignment] insert your script here
+      //[assignment] insert your script here
+      let a = [0, 0];
+      let b = [
+        [0, 0],
+        [0, 0],
+      ];
+      let c = [0, 0];
+      let d = [0];
+      expect(await verifier.verifyProof(a, b, c, d)).to.be.false;
     });
-});
+  });
 
-
-describe("Multiplier3 with PLONK", function () {
-
+  describe("Multiplier3 with plonk", function () {
     beforeEach(async function () {
-        //[assignment] insert your script here
+      //[assignment] insert your script here
+      Verifier = await ethers.getContractFactory("Multiplier3PlonkVerifier");
+      verifier = await Verifier.deploy();
+      await verifier.deployed();
     });
 
     it("Should return true for correct proof", async function () {
-        //[assignment] insert your script here
+      //[assignment] insert your script here
+      const { proof, publicSignals } = await plonk.fullProve(
+        { a: "1", b: "2", c: "3" },
+        "contracts/circuits/Multiplier3_plonk/Multiplier3_js/Multiplier3.wasm",
+        "contracts/circuits/Multiplier3_plonk/circuit_final.zkey"
+      );
+
+      console.log("1x2x3 =", publicSignals[0]);
+
+      const calldata = await plonk.exportSolidityCallData(
+        proof,
+        publicSignals
+      );
+
+      const argv = calldata.replace(/["[\]\s]/g, "").split(",");
+
+      expect(await verifier.verifyProof(argv[0], [argv[1]])).to.be.true;
     });
-    
     it("Should return false for invalid proof", async function () {
-        //[assignment] insert your script here
+      //[assignment] insert your script here
+      expect(await verifier.verifyProof(0x0, ["0"])).to.be.false;
     });
-});
+  });
